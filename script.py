@@ -1,6 +1,6 @@
 import BAC0
 import json
-from temporal import puntos_bacnet, puntos
+from pyModbusTCP.server import ModbusServer, DataBank
 
 def crear_instancia_bacnet():
     try:
@@ -10,7 +10,7 @@ def crear_instancia_bacnet():
         bacnet = None
     return bacnet
 
-def descubrir_puntos_bacnet(bacnet,ip):
+def descubrir_puntos_bacnet(bacnet, ip):
     try:
         tabla = bacnet.readMultiple(f'{ip} device 1001 all')
         if not tabla:
@@ -23,10 +23,18 @@ def descubrir_puntos_bacnet(bacnet,ip):
         print(f"Error al descubrir puntos BACnet: {e}")
         return []
 
-def mapear_a_modbus(puntos):
+def leer_valores_bacnet(bacnet, ip, puntos):
+    valores = {}
+    for punto in puntos:
+        try:
+            valor = bacnet.read(f'{ip} {punto["object_type"]} {punto["object_id"]} presentValue')
+            valores[punto["object_id"]] = valor
+        except Exception as e:
+            print(f"Error al leer valor de {punto}: {e}")
+    return valores
 
+def mapear_a_modbus(puntos):
     modbus_mapeo = []
-    # Contadores de direcciones
     address_counters = {
         'coil_read': 0,
         'coil_write': 1000,
@@ -36,47 +44,70 @@ def mapear_a_modbus(puntos):
 
     for punto in puntos:
         if punto['object_type'] == 'binaryInput':
-            # Los binaryInput de BACnet se asignan a las direcciones de "coil_read".
             modbus_mapeo.append({
                 'object_type': punto['object_type'],
                 'object_id': punto['object_id'],
-                'modbus_type': 'coil_read', # Tipo Modbus asociado (lectura de estado binario).
+                'modbus_type': 'coil_read',
                 'modbus_address': address_counters['coil_read']
             })
             address_counters['coil_read'] += 1
         elif punto['object_type'] == 'binaryOutput':
-            # Los binaryOutput de BACnet se asignan a las direcciones de "coil_write".
             modbus_mapeo.append({
                 'object_type': punto['object_type'],
                 'object_id': punto['object_id'],
-                'modbus_type': 'coil_write', # Tipo Modbus asociado (escritura de estado binario).
+                'modbus_type': 'coil_write',
                 'modbus_address': address_counters['coil_write']
             })
             address_counters['coil_write'] += 1
-        
         elif punto['object_type'] == 'analogInput':
-            # Los analogInput de BACnet se asignan a los "input_register".
             modbus_mapeo.append({
                 'object_type': punto['object_type'],
                 'object_id': punto['object_id'],
-                'modbus_type': 'input_register',      # Tipo Modbus asociado (lectura analógica).
+                'modbus_type': 'input_register',
                 'modbus_address': address_counters['input_register']
             })
             address_counters['input_register'] += 1
-
         elif punto['object_type'] == 'analogValue':
-            # Los analogValue de BACnet se asignan a los "holding_register".
             modbus_mapeo.append({
                 'object_type': punto['object_type'],
                 'object_id': punto['object_id'],
-                'modbus_type': 'holding_register',    # Tipo Modbus asociado (lectura/escritura analógica).
+                'modbus_type': 'holding_register',
                 'modbus_address': address_counters['holding_register']
             })
             address_counters['holding_register'] += 1
 
     return modbus_mapeo
 
+def actualizar_modbus(valores, mapeo):
+    for punto in mapeo:
+        valor = valores.get(punto['object_id'])
+        if valor is not None:
+            if punto['modbus_type'] == 'coil_read':
+                DataBank.set_bits(punto['modbus_address'], [valor])
+            elif punto['modbus_type'] == 'coil_write':
+                DataBank.set_bits(punto['modbus_address'], [valor])
+            elif punto['modbus_type'] == 'input_register':
+                DataBank.set_words(punto['modbus_address'], [valor])
+            elif punto['modbus_type'] == 'holding_register':
+                DataBank.set_words(punto['modbus_address'], [valor])
+
+bacnet = crear_instancia_bacnet()
+puntos = descubrir_puntos_bacnet(bacnet, '10.84.67.185')
 modbus_mapeo = mapear_a_modbus(puntos)
 
-with open('mapeo_modbus.json', 'w') as f:
-    json.dump(modbus_mapeo, f, indent=4)
+# Configurar y arrancar el servidor Modbus TCP
+server = ModbusServer("0.0.0.0", 502, no_block=True)
+server.start()
+
+try:
+    while True:
+        valores_bacnet = leer_valores_bacnet(bacnet,'10.84.67.185', puntos)
+        actualizar_modbus(valores_bacnet, modbus_mapeo)
+except KeyboardInterrupt:
+    print("Servidor detenido")
+finally:
+    server.stop()
+
+# modbus_mapeo = mapear_a_modbus(puntos)
+# with open('mapeo_modbus.json', 'w') as f:
+#    json.dump(modbus_mapeo, f, indent=4)
