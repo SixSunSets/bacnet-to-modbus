@@ -1,65 +1,9 @@
 import pandas as pd
 from pyModbusTCP.client import ModbusClient
 
-def leer_registro(c, registros):
-    resultados = {}
-    for registro in registros:
-        address = int(registro['Register number'], 16)  # Convertir a decimal
-        # Lee el registro de retención (holding register)
-        regs = c.read_holding_registers(address, 1)
-        
-        if regs:
-            equipo_id = registro['ID']
-            if equipo_id not in resultados:
-                resultados[equipo_id] = {
-                    'SEDE': registro['Sede equipo'],
-                    'MARCA': registro['Marca equipo'],
-                    'NOMBRE': registro['Nombre equipo'],
-                    'ESTADO': None,
-                    'VELOCIDAD': None,
-                    'TEMPERATURA': None,
-                    'SETPOINT': None,
-                    'ERROR': None
-                }
-            
-            if registro['Register type'] == 0:
-                resultados[equipo_id]['ESTADO'] = regs[0]
-            elif registro['Register type'] == 1:
-                resultados[equipo_id]['VELOCIDAD'] = regs[0]
-            elif registro['Register type'] == 2:
-                resultados[equipo_id]['SETPOINT'] = regs[0]
-            elif registro['Register type'] == 3:
-                resultados[equipo_id]['TEMPERATURA'] = regs[0]
-            elif registro['Register type'] == 4:
-                resultados[equipo_id]['ERROR'] = regs[0]
-            
-            print(f"Registro leído en {registro['Register number']}: {regs[0]}")
-        else:
-            print(f"Error al leer el registro en {registro['Register number']}. Respuesta: None")
-    
-    return list(resultados.values())
-
-def forma():
-    """
-    {
-    'SEDE': 
-    'MARCA': 
-    'NOMBRE': 
-    'ESTADO': 
-    'VELOCIDAD':
-    'TEMPERATURA': 
-    'SETPOINT': 
-    'ERROR': 
-    }
-    """
-    pass
-
 # Leer los datos desde el archivo Excel
 excel_path = 'C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Registros.xlsx'
 df = pd.read_excel(excel_path)
-
-# Contar el número de equipos
-numero_equipos = 18
 
 # Convertir el DataFrame a una lista de diccionarios
 registros = df.to_dict(orient='records')
@@ -68,22 +12,66 @@ registros = df.to_dict(orient='records')
 host = '10.84.67.185'
 port = 502
 unit_id = 10
-c = ModbusClient(host=host, port=port, unit_id=unit_id)
+#global c
+#c = ModbusClient(host=host, port=port, unit_id=unit_id)
 
-# Conéctate al servidor
-if c.open():
-    print("Conexión al servidor Modbus exitosa")
+def leer_registro(id_equipo, local_data):
+    local_data.dato = {
+        'SEDE': None,
+        'MARCA': None,
+        'NOMBRE': None,
+        'ESTADO': None,
+        'VELOCIDAD': None,
+        'TEMPERATURA': None,
+        'SETPOINT': None,
+        'ERROR': None
+    }
+    registros_equipo = [r for r in registros if r['ID'] == id_equipo]
+    for registro in registros_equipo:
+        address = int(registro['Register number'], 16)  # Convertir a decimal
+        try:
+            # Lee el registro de retención (holding register)
+            c = ModbusClient(host=host, port=port, unit_id=unit_id)
+            if registro['Register type'] == 0:
+                regs = c.read_coils(address, 1)
+            else:
+                regs = c.read_holding_registers(address, 1)
+            if regs:
+                local_data.dato['SEDE'] = registro['Sede equipo']
+                local_data.dato['MARCA'] = registro['Marca equipo']
+                local_data.dato['NOMBRE'] = registro['Nombre equipo']
+                
+                if registro['Register type'] == 0:
+                    if regs[0] == 0:
+                        local_data.dato['ESTADO'] = 'Apagado'
+                    elif regs[0] == 1:
+                        local_data.dato['ESTADO'] = 'Encendido'
+                    else:
+                        local_data.dato['ESTADO'] = 'Undefined'
+                if registro['Register type'] == 1:
+                    if regs[0] == 0:
+                        local_data.dato['VELOCIDAD'] = 'Undefined'
+                    elif regs[0] == 1:
+                        local_data.dato['VELOCIDAD'] = 'Baja'
+                    elif regs[0] == 2:
+                        local_data.dato['VELOCIDAD'] = 'Media'
+                    elif regs[0] == 3:
+                        local_data.dato['VELOCIDAD'] = 'Alta'
+                    elif regs[0] == 4:
+                        local_data.dato['VELOCIDAD'] = 'Auto'
+                if registro['Register type'] == 2:
+                    local_data.dato['SETPOINT'] = round(float(regs[0]), 2)
+                if registro['Register type'] == 3:
+                    local_data.dato['TEMPERATURA'] = round(float(regs[0]), 2)
+                if registro['Register type'] == 4:
+                    local_data.dato['ERROR'] = regs[0]
+                
+                #print(f"Registro leído en {registro['Register number']}: {regs[0]}")
+            else:
+                print(f"Error al leer el registro en {registro['Register number']}. Respuesta: None")
+        except Exception as e:
+            print(f"Error al leer el registro en {registro['Register number']}: {e}")
+        finally:
+            c.close()
     
-    # Leer registros agrupados por equipo
-    resultados = []
-    for id_equipo in range(1, numero_equipos + 1):
-        registros_equipo = [r for r in registros if r['ID'] == id_equipo]
-        resultado = leer_registro(c, registros_equipo)
-        resultados.extend(resultado)
-    
-    print("Resultados:", resultados)
-    
-    # Cierra la conexión
-    c.close()
-else:
-    print("Error al conectar con el servidor Modbus")
+    return local_data.dato
