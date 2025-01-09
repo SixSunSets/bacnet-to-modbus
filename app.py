@@ -20,7 +20,7 @@ def actualizar_fila(row_id):
             socketio.emit('update_row', {'row_id': row_id, 'values': local_data.registros})
         except NameError:
             print("Error: "+str(row_id)+" "+str(NameError))
-        time.sleep(5)
+        time.sleep(100)
                          
 @socketio.on('control_equipo')
 def handle_update_row(data):
@@ -30,7 +30,7 @@ def handle_update_rows(data):
     pass
 
 if __name__ == '__main__':
-    numero_equipos = 18
+    numero_equipos = 190
 
     for row_id in range(1,numero_equipos+1):
         threading.Thread(target=actualizar_fila,args=(row_id,),daemon=True).start()

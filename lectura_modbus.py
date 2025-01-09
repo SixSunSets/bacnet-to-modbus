@@ -2,16 +2,15 @@ import pandas as pd
 from pyModbusTCP.client import ModbusClient
 
 # Leer los datos desde el archivo Excel
-excel_path = 'C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Registros.xlsx'
+excel_path = 'Lista_de_Registros.xlsx'
 df = pd.read_excel(excel_path)
 
 # Convertir el DataFrame a una lista de diccionarios
 registros = df.to_dict(orient='records')
 
 # Configurar el cliente Modbus
-host = '10.84.67.185'
-port = 502
-unit_id = 10
+PORT = 502
+UNIT_ID = 10
 #global c
 #c = ModbusClient(host=host, port=port, unit_id=unit_id)
 
@@ -28,10 +27,11 @@ def leer_registro(id_equipo, local_data):
     }
     registros_equipo = [r for r in registros if r['ID'] == id_equipo]
     for registro in registros_equipo:
+        host = registro['IP']  # IP del equipo
         address = int(registro['Register number'], 16)  # Convertir a decimal
         try:
             # Lee el registro de retención (holding register)
-            c = ModbusClient(host=host, port=port, unit_id=unit_id)
+            c = ModbusClient(host=host, port=PORT, unit_id=UNIT_ID)
             if registro['Register type'] == 0:
                 regs = c.read_coils(address, 1)
             else:
@@ -75,3 +75,4 @@ def leer_registro(id_equipo, local_data):
             c.close()
     
     return local_data.dato
+

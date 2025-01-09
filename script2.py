@@ -2,7 +2,10 @@ import BAC0
 import json
 import threading
 import time
-from pyModbusTCP.server import ModbusServer
+from pymodbus.server.sync import StartTcpServer
+from pymodbus.device import ModbusDeviceIdentification
+from pymodbus.datastore import ModbusSequentialDataBlock
+from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 
 global numero_equipos
 numero_equipos = 190
@@ -30,8 +33,8 @@ def leer_dato(local_data, id_equipo):
 
     if local_data.lista_datos:
         local_data.equipos_ac = {local_data.nombre_equipo: local_data.lista_datos}
-
         local_data.dato = {}
+
         for name, equipo in local_data.equipos_ac.items():
             for punto in equipo:
                 local_data.type_signal = int(punto[11])
@@ -76,7 +79,6 @@ def leer_dato(local_data, id_equipo):
 
     return local_data.dato
 
-
 def leer_datos_equipo(id_equipo, resultados):
     local_data = threading.local()
     resultado = leer_dato(local_data, id_equipo)
@@ -97,46 +99,130 @@ def obtener_datos_equipos(numero_equipos):
 
     return resultados
 
-def mapear_a_modbus(resultados):
+def mapear_a_modbus(datos_equipos, context):
     address_counter = 1  # Dirección de inicio para los registros holding
-    for id_equipo in sorted(resultados.keys()):  # Ordenar por id_equipo
-        datos = resultados[id_equipo]
+    for id_equipo in sorted(datos_equipos.keys()):
+        datos = datos_equipos[id_equipo]
         estado = 1 if datos['ESTADO'] == 'Encendido' else 0
         velocidad = {'Baja': 1, 'Media': 2, 'Alta': 3}.get(datos['VELOCIDAD'], 0)
         temperatura = int(float(datos['TEMPERATURA']) * 10)  # Convertir a entero para Modbus
         setpoint = int(float(datos['SETPOINT']) * 10)  # Convertir a entero para Modbus
 
-        server.data_bank.set_holding_registers(address_counter, [estado])
+        context[0].setValues(3, address_counter, [estado])
         print(f"Actualizado holding register en {address_counter} con valor {estado}")
         address_counter += 1
 
-        server.data_bank.set_holding_registers(address_counter, [velocidad])
+        context[0].setValues(3, address_counter, [velocidad])
         print(f"Actualizado holding register en {address_counter} con valor {velocidad}")
         address_counter += 1
 
-        server.data_bank.set_holding_registers(address_counter, [temperatura])
+        context[0].setValues(3, address_counter, [temperatura])
         print(f"Actualizado holding register en {address_counter} con valor {temperatura}")
         address_counter += 1
 
-        server.data_bank.set_holding_registers(address_counter, [setpoint])
+        context[0].setValues(3, address_counter, [setpoint])
         print(f"Actualizado holding register en {address_counter} con valor {setpoint}")
         address_counter += 1
 
-# Configurar y arrancar el servidor Modbus TCP
-server = ModbusServer("0.0.0.0", 502, no_block=True)
-server.start()
+def comando_unico(local_data,datos):
+    local_data.id_equipo = int(datos[0])
+    local_data.comando_on_off = datos[1]
+    local_data.comando_ventilador = datos[2]
+    local_data.comando_setpoint = datos[3]
+
+    local_data.nombre_equipo = ''
+    local_data.lista_datos = []
+    local_data.equipos_ac = {}
+
+    for sede, equipos in datos_json.items():
+        for equipo_id, puntos in equipos.items():
+            if int(equipo_id) == local_data.id_equipo:
+                local_data.nombre_equipo = puntos[0][5]  
+                local_data.lista_datos = puntos
+                break
+        if local_data.lista_datos:
+            break
+
+    if local_data.lista_datos:
+        local_data.equipos_ac = {local_data.nombre_equipo: local_data.lista_datos}
+     
+    local_data.status_comando_1 = None
+    local_data.status_comando_3 = None
+    local_data.status_comando_5 = None
+    
+    for name, equipo in local_data.equipos_ac.items():
+        for punto in equipo:
+            local_data.type_signal = int(punto[11])
+            if local_data.type_signal == 1:
+                local_data.status_comando_1 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_on_off))
+            elif local_data.type_signal == 3:
+                local_data.status_comando_3 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_ventilador))
+            elif local_data.type_signal == 5:
+                local_data.status_comando_5 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_setpoint))
+
+def comandar_datos_equipo(datos):
+    local_data.id_equipo = datos["row_id"]
+    local_data.comando_on_off = datos["values"]["col1"]
+    local_data.comando_ventilador = datos["values"]["col2"]
+    local_data.comando_setpoint = datos["values"]["col3"]
+    local_data.datos = [local_data.id_equipo,local_data.comando_on_off,local_data.
+    comando_ventilador,local_data.comando_setpoint]
+    comando_unico(local_data,local_data.datos)
+
+def manejar_escritura_modbus():
+    #rowId = 1
+    #on_off = "active"
+    #ventilador = 2 #3
+    #setpoint = 20 #21
+    #datos = {"row_id":rowId,"values":{"col1": on_off, "col2":ventilador, "col3": setpoint}}
+    #comandar_datos_equipo(datos)
+    # Leer registros modificados
+    valores_anteriores = {}
+    while True:
+        address_counter_rw = 1000
+        for address in range(address_counter_rw, address_counter_rw + numero_equipos * 3, 3):
+            estado = context[0].getValues(3, address, count=1)[0]
+            ventilador = context[0].getValues(3, address + 1, count=1)[0]
+            setpoint = context[0].getValues(3, address + 2, count=1)[0] / 10.0
+            row_id = (address - address_counter_rw) // 3
+
+            # Verificar si los valores han cambiado
+            if address not in valores_anteriores or valores_anteriores[address] != (estado, ventilador, setpoint):
+                valores_anteriores[address] = (estado, ventilador, setpoint)
+
+                # Enviar comando BACnet correspondiente
+                if address % 3 == 0:
+                    # Comando de encendido/apagado
+                    comando = "active" if estado == 1 else "inactive"
+                    instancia_bacnet.write(f"10.84.67.185 binaryOutput {row_id} presentValue {comando}")
+
+        time.sleep(1)  # Esperar un tiempo antes de la siguiente verificación
+
+
+def iniciar_servidor():   
+    StartTcpServer(context=context, identity=identity, address=("", 5020))
+
+# Configurar servidor Modbus TCP
+store = ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True)
+context = ModbusServerContext(slaves=store, single=True)
+identity = ModbusDeviceIdentification()
+
+# Iniciar el servidor en un hilo separado
+modbus_thread = threading.Thread(target=iniciar_servidor)
+modbus_thread.start()
+
+# Iniciar el manejo de escrituras en un hilo separado
+escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(context,))
+escritura_thread.start()
 
 try:
     while True:
-        # Leer datos de los equipos
+        # Obtener datos de los equipos
         datos_equipos = obtener_datos_equipos(numero_equipos)
-        print(datos_equipos)
-        
-        # Mapear y actualizar los registros holding de Modbus
-        mapear_a_modbus(datos_equipos)
-
+        # Mapear los datos a registros holding
+        mapear_a_modbus(datos_equipos, context)
+        # Esperar un tiempo antes de la siguiente actualización
         time.sleep(10)
 except KeyboardInterrupt:
     print("Servidor detenido")
-finally:
-    server.stop()
+
