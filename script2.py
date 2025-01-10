@@ -13,7 +13,7 @@ local_data = threading.local()
 
 instancia_bacnet = BAC0.connect(port=47813)
 
-with open('C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos.json') as archivo_json:
+with open('C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos.json') as archivo_json:
     datos_json = json.load(archivo_json)
 
 def leer_dato(local_data, id_equipo):
@@ -169,35 +169,46 @@ def comandar_datos_equipo(datos):
     comando_ventilador,local_data.comando_setpoint]
     comando_unico(local_data,local_data.datos)
 
-def manejar_escritura_modbus():
-    #rowId = 1
-    #on_off = "active"
-    #ventilador = 2 #3
-    #setpoint = 20 #21
-    #datos = {"row_id":rowId,"values":{"col1": on_off, "col2":ventilador, "col3": setpoint}}
-    #comandar_datos_equipo(datos)
-    # Leer registros modificados
-    valores_anteriores = {}
+def manejar_escritura_modbus(context):
+    valores_pasados = {}
+    inicializados = []
     while True:
-        address_counter_rw = 1000
-        for address in range(address_counter_rw, address_counter_rw + numero_equipos * 3, 3):
-            estado = context[0].getValues(3, address, count=1)[0]
-            ventilador = context[0].getValues(3, address + 1, count=1)[0]
+        for address in range(1000, 1000 + numero_equipos * 3, 3):  
+            # Leer valores actuales desde el contexto
+            estado = "active" if context[0].getValues(3, address, count=1)[0] == 1 else "inactive"
+            velocidad = context[0].getValues(3, address + 1, count=1)[0]
             setpoint = context[0].getValues(3, address + 2, count=1)[0] / 10.0
-            row_id = (address - address_counter_rw) // 3
 
-            # Verificar si los valores han cambiado
-            if address not in valores_anteriores or valores_anteriores[address] != (estado, ventilador, setpoint):
-                valores_anteriores[address] = (estado, ventilador, setpoint)
+            # No mandar comandos mientras los registros tengan su valor inicial
+            if address not in inicializados:
+                if estado != "inactive":
+                    inicializados.append(address)
+                    valores_pasados[address] = estado
+            
+            if address + 1 not in inicializados:
+                if velocidad != 0:
+                    inicializados.append(address + 1)
+                    valores_pasados[address + 1] = velocidad
 
-                # Enviar comando BACnet correspondiente
-                if address % 3 == 0:
-                    # Comando de encendido/apagado
-                    comando = "active" if estado == 1 else "inactive"
-                    instancia_bacnet.write(f"10.84.67.185 binaryOutput {row_id} presentValue {comando}")
+            if address + 2 not in inicializados:
+                if setpoint != 0.0:
+                    inicializados.append(address + 2)
+                    valores_pasados[address + 2] = setpoint
+                
+            # Verificar y procesar cambios en cada valor
+            if address in inicializados and valores_pasados[address] != estado:
+                print(f"10.84.67.185 binaryOutput 257 presentValue {estado}")
+                valores_pasados[address] = estado  
 
-        time.sleep(1)  # Esperar un tiempo antes de la siguiente verificación
+            if address + 1 in inicializados and valores_pasados[address + 1] != velocidad:
+                print(f"10.84.67.185 multiStateOutput 267 presentValue {velocidad}")
+                valores_pasados[address + 1] = velocidad  
 
+            if address + 2 in inicializados and valores_pasados[address + 2] != setpoint:
+                print(f"10.84.67.185 analogValue 269 presentValue {setpoint}")
+                valores_pasados[address + 2] = setpoint  
+
+        time.sleep(10)
 
 def iniciar_servidor():   
     StartTcpServer(context=context, identity=identity, address=("", 5020))
@@ -218,9 +229,9 @@ escritura_thread.start()
 try:
     while True:
         # Obtener datos de los equipos
-        datos_equipos = obtener_datos_equipos(numero_equipos)
+        #datos_equipos = obtener_datos_equipos(numero_equipos)
         # Mapear los datos a registros holding
-        mapear_a_modbus(datos_equipos, context)
+        #mapear_a_modbus(datos_equipos, context)
         # Esperar un tiempo antes de la siguiente actualización
         time.sleep(10)
 except KeyboardInterrupt:
