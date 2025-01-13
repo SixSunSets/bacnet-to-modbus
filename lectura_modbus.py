@@ -76,3 +76,63 @@ def leer_registro(id_equipo, local_data):
     
     return local_data.dato
 
+def escritura_unica(datos, local_data):
+    local_data.id_equipo = datos["id_equipo"]
+    local_data.comando_on_off = datos["comando_on_off"]
+    local_data.comando_ventilador = datos["comando_ventilador"]
+    local_data.comando_setpoint = int(datos["comando_setpoint"])
+
+    on_off_map = {
+        "Apagado": 0,
+        "Encendido": 1
+    }
+
+    ventilador_map = {
+        "Undefined": 0,
+        "Baja": 1,
+        "Media": 2,
+        "Alta": 3,
+        "Auto": 4
+    }
+
+    # Convertir los valores de comando_on_off y comando_ventilador a números enteros
+    local_data.comando_on_off = on_off_map.get(local_data.comando_on_off, local_data.comando_on_off)
+    local_data.comando_ventilador = ventilador_map.get(local_data.comando_ventilador, local_data.comando_ventilador)
+
+    registros_equipo = [r for r in registros if r['ID'] == local_data.id_equipo]
+    if not registros_equipo:
+        print(f"No se encontraron registros para el equipo ID {local_data.id_equipo}")
+        return
+
+    # Usar la IP del primer registro para conectar el cliente
+    host = registros_equipo[0]['IP']
+    try:
+        # Crear un único cliente Modbus
+        c = ModbusClient(host=host, port=PORT, unit_id=UNIT_ID)
+        if not c.open():
+            print(f"Error al conectar con el servidor Modbus en {host}:{PORT}")
+            return
+
+        for registro in registros_equipo:
+            address = int(registro['Register number'], 16)  # Convertir a decimal
+            try:
+                if local_data.comando_on_off is not None and registro['Register type'] == 0:
+                    result = c.write_single_coil(address, local_data.comando_on_off)
+                    print(f"Escritura  de coil en {registro['Register number']}")
+
+                if local_data.comando_ventilador is not None and registro['Register type'] == 1:
+                    result = c.write_single_register(address, local_data.comando_ventilador)
+                    print(f"Escritura  de holding register en {registro['Register number']}")
+
+                if local_data.comando_setpoint is not None and registro['Register type'] == 2:
+                    result = c.write_single_register(address, local_data.comando_setpoint)
+                    print(f"Escritura  de holding register en {registro['Register number']}")
+
+            except Exception as e:
+                print(f"Error al escribir en {registro['Register number']}: {e}")
+
+    except Exception as e:
+        print(f"Error al conectar con el servidor Modbus en {host}: {e}")
+    finally:
+        # Cerrar el cliente al final
+        c.close()
