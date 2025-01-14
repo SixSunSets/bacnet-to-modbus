@@ -68,9 +68,9 @@ def leer_registro(id_equipo, local_data):
                 
                 #print(f"Registro leído en {registro['Register number']}: {regs[0]}")
             else:
-                print(f"Error al leer el registro en {registro['Register number']}. Respuesta: None")
+                print(f"[-] Error al leer el registro en {registro['Register number']}. Respuesta: None")
         except Exception as e:
-            print(f"Error al leer el registro en {registro['Register number']}: {e}")
+            print(f"[-] Error al leer el registro en {registro['Register number']}: {e}")
         finally:
             c.close()
     
@@ -101,7 +101,7 @@ def escritura_unica(datos, local_data):
 
     registros_equipo = [r for r in registros if r['ID'] == local_data.id_equipo]
     if not registros_equipo:
-        print(f"No se encontraron registros para el equipo ID {local_data.id_equipo}")
+        print(f"[-] No se encontraron registros para el equipo ID {local_data.id_equipo}")
         return
 
     # Usar la IP del primer registro para conectar el cliente
@@ -110,7 +110,7 @@ def escritura_unica(datos, local_data):
         # Crear un único cliente Modbus
         c = ModbusClient(host=host, port=PORT, unit_id=UNIT_ID)
         if not c.open():
-            print(f"Error al conectar con el servidor Modbus en {host}:{PORT}")
+            print(f"[-] Error al conectar con el servidor Modbus en {host}:{PORT}")
             return
 
         for registro in registros_equipo:
@@ -129,10 +129,10 @@ def escritura_unica(datos, local_data):
                     print(f"Escritura  de holding register en {registro['Register number']}")
 
             except Exception as e:
-                print(f"Error al escribir en {registro['Register number']}: {e}")
+                print(f"[-] Error al escribir en {registro['Register number']}: {e}")
 
     except Exception as e:
-        print(f"Error al conectar con el servidor Modbus en {host}: {e}")
+        print(f"[-] Error al conectar con el servidor Modbus en {host}: {e}")
     finally:
         # Cerrar el cliente al final
         c.close()
