@@ -111,7 +111,7 @@ def escritura_unica(datos, local_data):
         c = ModbusClient(host=host, port=PORT, unit_id=UNIT_ID)
         if not c.open():
             print(f"[-] Error al conectar con el servidor Modbus en {host}:{PORT}")
-            return
+            return 
 
         for registro in registros_equipo:
             address = int(registro['Register number'], 16)  # Convertir a decimal
