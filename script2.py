@@ -8,12 +8,12 @@ from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 
 global numero_equipos
-numero_equipos = 190
+numero_equipos = 10
 local_data = threading.local()
 
 instancia_bacnet = BAC0.connect(port=47813)
 
-with open('C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos.json') as archivo_json:
+with open('C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos.json') as archivo_json:
     datos_json = json.load(archivo_json)
 
 def leer_dato(local_data, id_equipo):
@@ -229,9 +229,9 @@ escritura_thread.start()
 try:
     while True:
         # Obtener datos de los equipos
-        #datos_equipos = obtener_datos_equipos(numero_equipos)
+        datos_equipos = obtener_datos_equipos(numero_equipos)
         # Mapear los datos a registros holding
-        #mapear_a_modbus(datos_equipos, context)
+        mapear_a_modbus(datos_equipos, context)
         # Esperar un tiempo antes de la siguiente actualización
         time.sleep(10)
 except KeyboardInterrupt:
