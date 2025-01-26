@@ -1,9 +1,9 @@
 from pyModbusTCP.client import ModbusClient
 import logging
 
-HOST = "localhost"#"10.84.67.185"
-PORT = 5020
-UNIT_ID = 1
+HOST = "10.84.0.66"#"10.84.67.185" #localhost
+PORT = 502
+UNIT_ID = 10
 
 # Crear instancia del cliente Modbus
 c = ModbusClient(host=HOST, port=PORT, unit_id=UNIT_ID)
@@ -18,11 +18,11 @@ else:
     print(f"Conectado al servidor Modbus en {HOST}:{PORT}")
 
 # Dirección del registro a leer
-address_hex = "0x0000" # 0x0012: Setpoint, 0x0015: Temperatura
+address_hex = "0x0047" # 0x0012: Setpoint, 0x0015: Temperatura
 address = int(address_hex, 16)
 
 # Leer el registro holding
-reg = c.read_holding_registers(address, 1)
+reg = c.read_holding_registers(address, 10) # Cantidad de registros a leer
 
 # Verificar si la lectura fue exitosa
 if reg is None:

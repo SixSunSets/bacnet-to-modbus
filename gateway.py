@@ -7,13 +7,15 @@ from pymodbus.device import ModbusDeviceIdentification
 from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 
-global numero_equipos
-numero_equipos = 10
+id_equipo_inicio = 191 # 1
+numero_equipos = 29 # 190
 local_data = threading.local()
 
 instancia_bacnet = BAC0.connect(port=47813)
 
-with open('C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos.json') as archivo_json:
+# C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
+# C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
+with open("C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
     datos_json = json.load(archivo_json)
 
 def leer_dato(local_data, id_equipo):
@@ -21,9 +23,12 @@ def leer_dato(local_data, id_equipo):
     local_data.lista_datos = []
     local_data.equipos_ac = {}
     local_data.dato = {}
+    local_data.error = None
 
     for sede, equipos in datos_json.items():
+        # print(equipos)
         for equipo_id, puntos in equipos.items():
+            # print(equipo_id)
             if int(equipo_id) == id_equipo:
                 local_data.nombre_equipo = puntos[0][5]
                 local_data.lista_datos = puntos
@@ -35,9 +40,12 @@ def leer_dato(local_data, id_equipo):
         local_data.equipos_ac = {local_data.nombre_equipo: local_data.lista_datos}
         local_data.dato = {}
 
+        # print(local_data.equipos_ac) #######
+        # print(f'{local_data.equipos_ac}\n') #####
         for name, equipo in local_data.equipos_ac.items():
             for punto in equipo:
                 local_data.type_signal = int(punto[11])
+                local_data.marca = punto[6]
                 try:
                     local_data.lectura_punto = str(instancia_bacnet.read(str(punto[2]) + " " + str(punto[10]) + " " + str(punto[9]) + " presentValue"))
                 except BAC0.core.io.IOExceptions.NoResponseFromController:
@@ -54,14 +62,25 @@ def leer_dato(local_data, id_equipo):
                         local_data.estado_velocidad = 'Undefined'
                     else:
                         local_data.indice = int(local_data.lectura_punto) if local_data.lectura_punto != '' else 0
-                        local_data.estados = ['Undefined', 'Baja', 'Media', 'Alta', 'Auto']
-                        local_data.estado_velocidad = local_data.estados[local_data.indice]
+                        if local_data.marca == 'LG':
+                            local_data.estados = {0: 'Undefined', 1: 'Baja', 2:'Media', 3:'Alta', 4:'Auto'}
+                            local_data.estado_velocidad = local_data.estados[local_data.indice]
+                        if local_data.marca == 'Daikin':
+                            local_data.estados = {1: 'Baja', 2:'Alta', 3:'Media'} # Solo los que tienen 3 niveles vel. pueden tener 'Media'
+                            local_data.estado_velocidad = local_data.estados[local_data.indice]
 
                 elif local_data.type_signal == 6:  # Temperatura ambiente
                     if local_data.lectura_punto is None or '.' not in local_data.lectura_punto:
                         local_data.temperatura = 0.0
                     else:
                         local_data.temperatura = round(float(local_data.lectura_punto), 2) if local_data.lectura_punto != '' else 0
+
+                elif local_data.type_signal == 7:
+                    if local_data.marca == 'Daikin': 
+                        if int(local_data.lectura_punto) == 1:
+                            local_data.error = 0 # No hay error
+                        else:
+                            local_data.error = 242 # Hay error
 
                 elif local_data.type_signal == 8:  # Setpoint de temperatura
                     if local_data.lectura_punto is None or '.' not in local_data.lectura_punto:
@@ -70,13 +89,16 @@ def leer_dato(local_data, id_equipo):
                         local_data.setpoint_temperatura = round(float(local_data.lectura_punto), 2) if local_data.lectura_punto != '' else 0
 
             local_data.dato = {
+                'MARCA': equipo[0][6],
                 'NOMBRE': str(name),
                 'ESTADO': str(local_data.estado_on_off),
                 'VELOCIDAD': str(local_data.estado_velocidad),
                 'TEMPERATURA': str(local_data.temperatura),
-                'SETPOINT': str(local_data.setpoint_temperatura)
+                'SETPOINT': str(local_data.setpoint_temperatura),
+                'ERROR': str(local_data.error)
             }
 
+    print(local_data.dato)
     return local_data.dato
 
 def leer_datos_equipo(id_equipo, resultados):
@@ -89,7 +111,7 @@ def obtener_datos_equipos(numero_equipos):
     resultados = {}
     hilos = []
 
-    for id_equipo in range(numero_equipos):
+    for id_equipo in range(id_equipo_inicio, id_equipo_inicio + numero_equipos):
         hilo = threading.Thread(target=leer_datos_equipo, args=(id_equipo, resultados))
         hilos.append(hilo)
         hilo.start()
@@ -104,80 +126,46 @@ def mapear_a_modbus(datos_equipos, context):
     for id_equipo in sorted(datos_equipos.keys()):
         datos = datos_equipos[id_equipo]
         estado = 1 if datos['ESTADO'] == 'Encendido' else 0
-        velocidad = {'Baja': 1, 'Media': 2, 'Alta': 3}.get(datos['VELOCIDAD'], 0)
+        if datos['MARCA'] == 'LG':
+            velocidad = {'Baja': 1, 'Media': 2, 'Alta': 3}.get(datos['VELOCIDAD'], 0) # Daikin {Baja: 1, Media: 3, Alta: 5}, solo algunos equipos tienen media
+        elif datos['MARCA'] == 'Daikin':
+            velocidad = {'Baja': 1, 'Alta': 2, 'Media': 3}.get(datos['VELOCIDAD'], 0)
         temperatura = int(float(datos['TEMPERATURA']) * 10)  # Convertir a entero para Modbus
         setpoint = int(float(datos['SETPOINT']) * 10)  # Convertir a entero para Modbus
+        error = int(datos['ERROR'])
 
-        context[0].setValues(3, address_counter, [estado])
+        context[0xA].setValues(3, address_counter, [estado])
         print(f"Actualizado holding register en {address_counter} con valor {estado}")
         address_counter += 1
 
-        context[0].setValues(3, address_counter, [velocidad])
+        context[0xA].setValues(3, address_counter, [velocidad])
         print(f"Actualizado holding register en {address_counter} con valor {velocidad}")
         address_counter += 1
 
-        context[0].setValues(3, address_counter, [temperatura])
-        print(f"Actualizado holding register en {address_counter} con valor {temperatura}")
-        address_counter += 1
-
-        context[0].setValues(3, address_counter, [setpoint])
+        context[0xA].setValues(3, address_counter, [setpoint])
         print(f"Actualizado holding register en {address_counter} con valor {setpoint}")
         address_counter += 1
 
-def comando_unico(local_data,datos):
-    local_data.id_equipo = int(datos[0])
-    local_data.comando_on_off = datos[1]
-    local_data.comando_ventilador = datos[2]
-    local_data.comando_setpoint = datos[3]
+        context[0xA].setValues(3, address_counter, [temperatura])
+        print(f"Actualizado holding register en {address_counter} con valor {temperatura}")
+        address_counter += 1
 
-    local_data.nombre_equipo = ''
-    local_data.lista_datos = []
-    local_data.equipos_ac = {}
+        context[0XA].setValues(3, address_counter, [error])
+        print(f"Actualizado holding register en {address_counter} con valor {error}")
+        address_counter += 1
 
-    for sede, equipos in datos_json.items():
-        for equipo_id, puntos in equipos.items():
-            if int(equipo_id) == local_data.id_equipo:
-                local_data.nombre_equipo = puntos[0][5]  
-                local_data.lista_datos = puntos
-                break
-        if local_data.lista_datos:
-            break
-
-    if local_data.lista_datos:
-        local_data.equipos_ac = {local_data.nombre_equipo: local_data.lista_datos}
-     
-    local_data.status_comando_1 = None
-    local_data.status_comando_3 = None
-    local_data.status_comando_5 = None
-    
-    for name, equipo in local_data.equipos_ac.items():
-        for punto in equipo:
-            local_data.type_signal = int(punto[11])
-            if local_data.type_signal == 1:
-                local_data.status_comando_1 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_on_off))
-            elif local_data.type_signal == 3:
-                local_data.status_comando_3 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_ventilador))
-            elif local_data.type_signal == 5:
-                local_data.status_comando_5 = instancia_bacnet.write(str(punto[2])+" "+str(punto[10])+" "+str(punto[9])+" presentValue "+str(local_data.comando_setpoint))
-
-def comandar_datos_equipo(datos):
-    local_data.id_equipo = datos["row_id"]
-    local_data.comando_on_off = datos["values"]["col1"]
-    local_data.comando_ventilador = datos["values"]["col2"]
-    local_data.comando_setpoint = datos["values"]["col3"]
-    local_data.datos = [local_data.id_equipo,local_data.comando_on_off,local_data.
-    comando_ventilador,local_data.comando_setpoint]
-    comando_unico(local_data,local_data.datos)
-
-def manejar_escritura_modbus(context):
-    valores_pasados = {}
+def manejar_escritura_modbus(datos_json, context):
+    address_counter = 0x1001  # Dirección inicial para registros Modbus
     inicializados = []
+    valores_pasados = {}
+
+    # Implementando unas validaciones para que el valor del registro predeterminado (0) no se mande, y solo se mande a escribir por bacnet cuando el valor del registro cambia
     while True:
-        for address in range(1000, 1000 + numero_equipos * 3, 3):  
+        for address in range(address_counter, address_counter + numero_equipos * 3, 3):  
             # Leer valores actuales desde el contexto
-            estado = "active" if context[0].getValues(3, address, count=1)[0] == 1 else "inactive"
-            velocidad = context[0].getValues(3, address + 1, count=1)[0]
-            setpoint = context[0].getValues(3, address + 2, count=1)[0] / 10.0
+            estado = "active" if context[0xA].getValues(3, address, count=1)[0] == 1 else "inactive"
+            velocidad = context[0xA].getValues(3, address + 1, count=1)[0]
+            setpoint = context[0xA].getValues(3, address + 2, count=1)[0] / 10.0
 
             # No mandar comandos mientras los registros tengan su valor inicial
             if address not in inicializados:
@@ -211,19 +199,23 @@ def manejar_escritura_modbus(context):
         time.sleep(10)
 
 def iniciar_servidor():   
-    StartTcpServer(context=context, identity=identity, address=("", 5020))
+    StartTcpServer(context=context, identity=identity, address=("", 502))
+
+
 
 # Configurar servidor Modbus TCP
-store = ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True)
-context = ModbusServerContext(slaves=store, single=True)
+slaves  = {
+             0xA: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True) # = store
+         }
+context = ModbusServerContext(slaves=slaves, single=False)
 identity = ModbusDeviceIdentification()
 
 # Iniciar el servidor en un hilo separado
-modbus_thread = threading.Thread(target=iniciar_servidor)
+modbus_thread = threading.Thread(target=iniciar_servidor, daemon=True)
 modbus_thread.start()
 
 # Iniciar el manejo de escrituras en un hilo separado
-escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(context,))
+escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(datos_json, context), daemon=True)
 escritura_thread.start()
 
 try:
