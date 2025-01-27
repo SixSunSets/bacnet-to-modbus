@@ -15,6 +15,7 @@ instancia_bacnet = BAC0.connect(port=47813)
 
 # C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 # C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
+# C:/Users/alexa/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 with open("C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
     datos_json = json.load(archivo_json)
 
@@ -155,53 +156,56 @@ def mapear_a_modbus(datos_equipos, context):
         address_counter += 1
 
 def manejar_escritura_modbus(datos_json, context):
-    address_counter = 0x1001  # Dirección inicial para registros Modbus
-    inicializados = []
-    valores_pasados = {}
+    address_counter = 0xA000  # Dirección inicial para registros Modbus
+    inicializados = set()  # Usar un conjunto para registros inicializados
+    valores_pasados = {}  # Diccionario para almacenar valores anteriores
 
-    # Implementando unas validaciones para que el valor del registro predeterminado (0) no se mande, y solo se mande a escribir por bacnet cuando el valor del registro cambia
+    # Filtrar y almacenar los puntos de control (tipos de señal 1, 3 y 8)
+    puntos_control = []
+    for sede, equipos in datos_json.items():
+        for equipo_id, puntos in equipos.items():
+            for punto in puntos:
+                if punto[11] in (1, 3, 8):  # Solo incluir tipos de señal 1, 3 y 8
+                    puntos_control.append(punto)
+
     while True:
-        for address in range(address_counter, address_counter + numero_equipos * 3, 3):  
-            # Leer valores actuales desde el contexto
-            estado = "active" if context[0xA].getValues(3, address, count=1)[0] == 1 else "inactive"
-            velocidad = context[0xA].getValues(3, address + 1, count=1)[0]
-            setpoint = context[0xA].getValues(3, address + 2, count=1)[0] / 10.0
+        for offset, punto in enumerate(puntos_control):  # Iterar sobre los puntos de control
+            address = address_counter + offset  # Calcular la dirección Modbus
 
-            # No mandar comandos mientras los registros tengan su valor inicial
+            # Leer el valor actual desde el contexto Modbus
+            value = context[0xA].getValues(3, address, count=1)[0]
+
+            # Obtener los detalles del punto de control
+            ip = punto[2]  # IP
+            object_type = punto[10]  # Object Type (BACnet)
+            object_id = punto[9]  # Object ID (BACnet)
+            tipo_senal = punto[11]  # Tipo señal
+
+            # Determinar el valor presente según el tipo de señal
+            if tipo_senal == 1:  # binaryOutput (estado on/off)
+                present_value = "active" if value == 1 else "inactive"
+            elif tipo_senal == 3:  # multiStateOutput (velocidad)
+                present_value = value
+            elif tipo_senal == 8:  # analogValue (setpoint)
+                present_value = value / 10.0
+
+            # Generar el f-string dinámicamente
+            f_string = f"{ip} {object_type} {object_id} presentValue {present_value}"
+
+            # Lógica de inicialización y cambios
             if address not in inicializados:
-                if estado != "inactive":
-                    inicializados.append(address)
-                    valores_pasados[address] = estado
-            
-            if address + 1 not in inicializados:
-                if velocidad != 0:
-                    inicializados.append(address + 1)
-                    valores_pasados[address + 1] = velocidad
+                if present_value != ("inactive" if tipo_senal == 1 else 0):
+                    inicializados.add(address)
+                    valores_pasados[address] = present_value
+                    print(f_string)  # Imprimir en la primera escritura
+            elif valores_pasados[address] != present_value:
+                print(f_string)  # Imprimir en cambios posteriores
+                valores_pasados[address] = present_value  # Actualizar el valor anterior
 
-            if address + 2 not in inicializados:
-                if setpoint != 0.0:
-                    inicializados.append(address + 2)
-                    valores_pasados[address + 2] = setpoint
-                
-            # Verificar y procesar cambios en cada valor
-            if address in inicializados and valores_pasados[address] != estado:
-                print(f"10.84.67.185 binaryOutput 257 presentValue {estado}")
-                valores_pasados[address] = estado  
-
-            if address + 1 in inicializados and valores_pasados[address + 1] != velocidad:
-                print(f"10.84.67.185 multiStateOutput 267 presentValue {velocidad}")
-                valores_pasados[address + 1] = velocidad  
-
-            if address + 2 in inicializados and valores_pasados[address + 2] != setpoint:
-                print(f"10.84.67.185 analogValue 269 presentValue {setpoint}")
-                valores_pasados[address + 2] = setpoint  
-
-        time.sleep(10)
+        time.sleep(10)  # Esperar antes de la siguiente iteración
 
 def iniciar_servidor():   
     StartTcpServer(context=context, identity=identity, address=("", 502))
-
-
 
 # Configurar servidor Modbus TCP
 slaves  = {
@@ -221,9 +225,9 @@ escritura_thread.start()
 try:
     while True:
         # Obtener datos de los equipos
-        datos_equipos = obtener_datos_equipos(numero_equipos)
+        # datos_equipos = obtener_datos_equipos(numero_equipos)
         # Mapear los datos a registros holding
-        mapear_a_modbus(datos_equipos, context)
+        # mapear_a_modbus(datos_equipos, context)
         # Esperar un tiempo antes de la siguiente actualización
         time.sleep(10)
 except KeyboardInterrupt:
