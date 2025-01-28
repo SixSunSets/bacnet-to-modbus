@@ -8,7 +8,7 @@ from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 
 id_equipo_inicio = 191 # 1
-numero_equipos = 29 # 190
+numero_equipos = 75 # 190
 local_data = threading.local()
 
 instancia_bacnet = BAC0.connect(port=47813)
@@ -16,7 +16,7 @@ instancia_bacnet = BAC0.connect(port=47813)
 # C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 # C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 # C:/Users/alexa/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
-with open("C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
+with open("C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
     datos_json = json.load(archivo_json)
 
 def leer_dato(local_data, id_equipo):
@@ -123,7 +123,7 @@ def obtener_datos_equipos(numero_equipos):
     return resultados
 
 def mapear_a_modbus(datos_equipos, context):
-    address_counter = 1  # Dirección de inicio para los registros holding
+    address_counter = 1  # Dirección de inicio para los registros holding 0x0001
     for id_equipo in sorted(datos_equipos.keys()):
         datos = datos_equipos[id_equipo]
         estado = 1 if datos['ESTADO'] == 'Encendido' else 0
@@ -197,39 +197,42 @@ def manejar_escritura_modbus(datos_json, context):
                 if present_value != ("inactive" if tipo_senal == 1 else 0):
                     inicializados.add(address)
                     valores_pasados[address] = present_value
-                    print(f_string)  # Imprimir en la primera escritura
+                    instancia_bacnet.write(f_string)  # Imprimir en la primera escritura
+                    print(f_string)
             elif valores_pasados[address] != present_value:
-                print(f_string)  # Imprimir en cambios posteriores
+                instancia_bacnet.write(f_string)  # Imprimir en cambios posteriores
+                print(f_string)
                 valores_pasados[address] = present_value  # Actualizar el valor anterior
 
-        time.sleep(10)  # Esperar antes de la siguiente iteración
+        time.sleep(2)  # Esperar antes de la siguiente iteración
 
 def iniciar_servidor():   
     StartTcpServer(context=context, identity=identity, address=("", 502))
 
-# Configurar servidor Modbus TCP
-slaves  = {
-             0xA: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True) # = store
-         }
-context = ModbusServerContext(slaves=slaves, single=False)
-identity = ModbusDeviceIdentification()
+if __name__ == '__main__':
+    # Configurar servidor Modbus TCP
+    slaves  = {
+                0xA: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True) # = store
+            }
+    context = ModbusServerContext(slaves=slaves, single=False)
+    identity = ModbusDeviceIdentification()
 
-# Iniciar el servidor en un hilo separado
-modbus_thread = threading.Thread(target=iniciar_servidor, daemon=True)
-modbus_thread.start()
+    # Iniciar el servidor en un hilo separado
+    modbus_thread = threading.Thread(target=iniciar_servidor, daemon=True)
+    modbus_thread.start()
 
-# Iniciar el manejo de escrituras en un hilo separado
-escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(datos_json, context), daemon=True)
-escritura_thread.start()
+    # Iniciar el manejo de escrituras en un hilo separado
+    escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(datos_json, context), daemon=True)
+    escritura_thread.start()
 
-try:
-    while True:
-        # Obtener datos de los equipos
-        # datos_equipos = obtener_datos_equipos(numero_equipos)
-        # Mapear los datos a registros holding
-        # mapear_a_modbus(datos_equipos, context)
-        # Esperar un tiempo antes de la siguiente actualización
-        time.sleep(10)
-except KeyboardInterrupt:
-    print("Servidor detenido")
+    try:
+        while True:
+            # Obtener datos de los equipos
+            datos_equipos = obtener_datos_equipos(numero_equipos)
+            # Mapear los datos a registros holding
+            mapear_a_modbus(datos_equipos, context)
+            # Esperar un tiempo antes de la siguiente actualización
+            time.sleep(10)
+    except KeyboardInterrupt:
+        print("Servidor detenido")
 
