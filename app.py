@@ -25,7 +25,9 @@ def actualizar_fila(row_id):
 def escritura_unica_controlada(datos, local_data):
     # Emitir un evento de actualización después de la escritura
     escritura_exitosa = False
-    while(escritura_exitosa == False):
+    intentos = 0
+    while(escritura_exitosa == False and intentos < 7):
+        intentos += intentos
         row_id = datos["id_equipo"]
         print(f"[!] Intentando actualizar fila {row_id} con valores {datos['comando_on_off']}, {datos['comando_ventilador']}, {datos['comando_setpoint']}")
         fm.escritura_unica(datos, local_data)

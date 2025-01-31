@@ -26,7 +26,7 @@ def escribir_registro_modbus(host, port, unit_id, direccion_hex):
 host = 'localhost'#10.84.35.185
 port = 502
 unit_id = 10
-direccion_hex = "0xA000" #0x0101= estado, 0x0101= velocidad, 0x0102: Setpoint, 0x0105: Temperatura
+direccion_hex = "0xA0B4" #0x0101= estado, 0x0101= velocidad, 0x0102: Setpoint, 0x0105: Temperatura
 
 escribir_registro_modbus(host, port, unit_id, direccion_hex)
 

@@ -22,7 +22,7 @@ address_hex = "0xA000" # 0x0012: Setpoint, 0x0015: Temperatura
 address = int(address_hex, 16)
 
 # Leer el registro holding
-reg = c.read_holding_registers(address, 10) # Cantidad de registros a leer
+reg = c.read_holding_registers(address, 15) # Cantidad de registros a leer
 
 # Verificar si la lectura fue exitosa
 if reg is None:

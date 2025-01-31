@@ -16,7 +16,8 @@ instancia_bacnet = BAC0.connect(port=47813)
 # C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 # C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
 # C:/Users/alexa/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json
-with open("C:/Users/bms/Documents/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
+
+with open("C:/Users/User/Desktop/bacnet-to-modbus/Lista_de_Puntos_Daikin.json") as archivo_json:
     datos_json = json.load(archivo_json)
 
 def leer_dato(local_data, id_equipo):
@@ -155,7 +156,7 @@ def mapear_a_modbus(datos_equipos, context):
         print(f"Actualizado holding register en {address_counter} con valor {error}")
         address_counter += 1
 
-def manejar_escritura_modbus(datos_json, context):
+def manejar_escritura_modbus(context):
     address_counter = 0xA000  # Dirección inicial para registros Modbus
     inicializados = set()  # Usar un conjunto para registros inicializados
     valores_pasados = {}  # Diccionario para almacenar valores anteriores
@@ -167,6 +168,8 @@ def manejar_escritura_modbus(datos_json, context):
             for punto in puntos:
                 if punto[11] in (1, 3, 8):  # Solo incluir tipos de señal 1, 3 y 8
                     puntos_control.append(punto)
+
+    print(puntos_control)
 
     while True:
         for offset, punto in enumerate(puntos_control):  # Iterar sobre los puntos de control
@@ -197,10 +200,10 @@ def manejar_escritura_modbus(datos_json, context):
                 if present_value != ("inactive" if tipo_senal == 1 else 0):
                     inicializados.add(address)
                     valores_pasados[address] = present_value
-                    instancia_bacnet.write(f_string)  # Imprimir en la primera escritura
+                    #instancia_bacnet.write(f_string)  # Imprimir en la primera escritura
                     print(f_string)
             elif valores_pasados[address] != present_value:
-                instancia_bacnet.write(f_string)  # Imprimir en cambios posteriores
+                #instancia_bacnet.write(f_string)  # Imprimir en cambios posteriores
                 print(f_string)
                 valores_pasados[address] = present_value  # Actualizar el valor anterior
 
@@ -222,15 +225,15 @@ if __name__ == '__main__':
     modbus_thread.start()
 
     # Iniciar el manejo de escrituras en un hilo separado
-    escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(datos_json, context), daemon=True)
+    escritura_thread = threading.Thread(target=manejar_escritura_modbus, args=(context,), daemon=True)
     escritura_thread.start()
 
     try:
         while True:
             # Obtener datos de los equipos
-            datos_equipos = obtener_datos_equipos(numero_equipos)
+            # datos_equipos = obtener_datos_equipos(numero_equipos)
             # Mapear los datos a registros holding
-            mapear_a_modbus(datos_equipos, context)
+            # mapear_a_modbus(datos_equipos, context)
             # Esperar un tiempo antes de la siguiente actualización
             time.sleep(10)
     except KeyboardInterrupt:
