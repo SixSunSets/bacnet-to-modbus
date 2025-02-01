@@ -4,3 +4,4 @@ beconapp/
 *.bat
 *.vbs
 stop_all.txt
+__pycache__
