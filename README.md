@@ -52,3 +52,7 @@ With this information, we can determine whether a point is read-only or read/wri
 Briefly, binary data types can only have two values: “active” or “inactive”, while multistate types accept integer values, and analog types allow decimal values. A detailed description of each `Object type` can be found in the official Daikin design guide: Interface for use in BACnet (p 55).
 ### 
 
+## References
+[1] [Daikin Design Guide: Interface for Use in BACnet®](https://research-onero.s3.ap-southeast-1.amazonaws.com/Daikin_dev/img/library/files/CI190128005_files2019-01-28_16-34-59files.pdf)
+
+
