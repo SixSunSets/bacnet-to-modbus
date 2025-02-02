@@ -29,3 +29,26 @@ StartTcpServer(context=context, identity=identity, address=(IP, PORT))
   <img src="https://github.com/user-attachments/assets/8e727f08-2724-4701-8630-381aa296d3ee" width="750"/>
 </p>
 
+The gateway acts as a BACnet client, reading the available points from each Daikin device, each with its own IP address and located in different buildings. The points represent specific variables such as on/off status, fan speed, and temperature, and are identified by an `Object type` and an `Object ID`.
+
+With this information, we can determine whether a point is read-only or read/write. Therefore, we need a list of points for each Daikin device, which can be easily obtained using a BACnet Explorer such as YABE (Yet Another BACnet Explorer).
+
+### Example of a BACnet point list
+<div align="center">
+
+| Object name | Object type | Object ID|
+|-----------|-----------|-----------|
+| StartStopCommand_001    | binaryOutput   | 257 |
+| StartStopStatus_001    | binaryInput    | 258 |
+| MalfunctionCode_001    | multiStateInput | 260 |
+| AirFlowRateCommand_001    | multiStateOutput | 263 |
+| AirFlowRateStatus_001    | multiStateInput | 264 |
+| RoomTemp_001    | analogInput | 265 |
+| TempAdjust_001    | analogValue | 266 |
+
+</div>
+
+### Interacting with BACnet points
+A detailed description of each `Object type` can be found in the official Daikin design guide: Interface for use in BACnet® (p 55).
+
+
