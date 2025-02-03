@@ -56,7 +56,7 @@ We are only interested in a subset of points from the extensive list—five for 
 - Write points: These allow control over turning the unit on/off, adjusting the fan speed, and modifying the setpoint of indoor units.
 
 ### Creation of the Modbus Server
-A Modbus server is a process that listens for requests from Modbus clients, allowing them to read or write data stored in registers. In the gateway, a Modbus server is created on the local machine, enabling clients such as building management software or a web application to interact with the system. To standardize data storage, only holding registers are used. Holding registers are 16-bit memory locations that can store values for both reading and writing, making them suitable for maintaining the state of BACnet data within the Modbus server.
+A Modbus server is a process that listens for requests from Modbus clients, allowing them to read or write data stored in registers. In the gateway, a Modbus server is created on the local machine, enabling clients such as building automation software or a web application to interact with the system. To standardize data storage, only holding registers are used. Holding registers are 16-bit memory locations that can store values for both reading and writing, making them suitable for maintaining the state of BACnet data within the Modbus server.
   
 The server is initialized with the following Python script using pymodbus:
 
