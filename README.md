@@ -58,6 +58,16 @@ We are only interested in a subset of points from the extensive list—five for 
 ### Creation of the Modbus Server
 A Modbus server is a process that listens for requests from Modbus clients, allowing them to read or write data stored in registers. In the gateway, a Modbus server is created on the local machine, enabling clients such as building management software or a web application to interact with the system. To standardize data storage, only holding registers are used. Holding registers are 16-bit memory locations that can store values for both reading and writing, making them suitable for maintaining the state of BACnet data within the Modbus server.
 
+```python3
+slaves  = {
+                0x0A: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True)
+            }
+
+context = ModbusServerContext(slaves=slaves, single=False)
+identity = ModbusDeviceIdentification()
+StartTcpServer(context=context, identity=identity, address=(IP, PORT))
+```
+
 Although BACnet data is read and stored in Modbus registers, the mapping is not direct—certain transformations are required to ensure compatibility between both protocols.
 
 ### Mapping BACnet Data to Modbus Registers
