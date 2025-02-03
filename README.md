@@ -57,16 +57,29 @@ We are only interested in a subset of points from the extensive list—five for 
 
 ### Creation of the Modbus Server
 A Modbus server is a process that listens for requests from Modbus clients, allowing them to read or write data stored in registers. In the gateway, a Modbus server is created on the local machine, enabling clients such as building management software or a web application to interact with the system. To standardize data storage, only holding registers are used. Holding registers are 16-bit memory locations that can store values for both reading and writing, making them suitable for maintaining the state of BACnet data within the Modbus server.
+  
+The server is initialized with the following Python script using pymodbus:
 
 ```python3
 slaves  = {
                 0x0A: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True)
             }
 
+IP = ""
+PORT = 502
 context = ModbusServerContext(slaves=slaves, single=False)
 identity = ModbusDeviceIdentification()
 StartTcpServer(context=context, identity=identity, address=(IP, PORT))
 ```
+
+For this implementation, the Modbus server was configured with the following characteristics:
+
+- Unit ID: `0x0A` => Used to identify a specific slave device when multiple devices share the same network connection. 0x0A was chosen to follow the same convention as LG’s DDC controllers, which use this ID for their Modbus servers.
+- Port: `502` => This is the default Modbus TCP port, commonly used for communication.
+- Holding Registers (`hr`) => A sequential block of holding registers is created, which are stored inside a Modbus slave context.
+- `context (ModbusServerContext)` => This represents the data model of the Modbus server. It stores the register values and manages the Modbus slaves (devices). Here, we configure a single slave (0x0A) with holding registers as its only storage type.
+- `identity (ModbusDeviceIdentification)` => This provides device metadata, such as manufacturer name, product code, or version, that Modbus clients can query. In this case, it’s initialized but empty.
+- `StartTcpServer(context=context, identity=identity, address=("", 502))` => This function starts the Modbus TCP server on the local machine and port (502), allowing clients to connect and interact with the Modbus registers.
 
 Although BACnet data is read and stored in Modbus registers, the mapping is not direct—certain transformations are required to ensure compatibility between both protocols.
 
