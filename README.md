@@ -49,10 +49,21 @@ With this information, we can determine whether a point is read-only or read/wri
 </div>
 
 ### Interacting with BACnet points
-Briefly, binary data types can only have two values: “active” or “inactive”, while multistate types accept integer values, and analog types allow decimal values. A detailed description of each `Object type` can be found in the official Daikin design guide: Interface for use in BACnet [1].
-### 
+Briefly, binary data types can only have two values: “active” or “inactive”, while multistate types accept integer values, and analog types allow decimal values. A detailed description of each `Object type` can be found in the official Daikin design guide: Interface for use in BACnet [1, p. 55].
+We are only interested in a subset of points from the extensive list—five for reading and three for writing.
+
+- Read points: These provide information about the on/off status, fan speed, room temperature, setpoint (adjusted value), and error code.
+- Write points: These allow control over turning the unit on/off, adjusting the fan speed, and modifying the setpoint of indoor units.
+
+### Creation of the Modbus Server
+A Modbus server is a process that listens for requests from Modbus clients, allowing them to read or write data stored in registers. In the gateway, a Modbus server is created on the local machine, enabling clients such as building management software or a web application to interact with the system. To standardize data storage, only holding registers are used. Holding registers are 16-bit memory locations that can store values for both reading and writing, making them suitable for maintaining the state of BACnet data within the Modbus server.
+
+Although BACnet data is read and stored in Modbus registers, the mapping is not direct—certain transformations are required to ensure compatibility between both protocols.
+
+### Mapping BACnet Data to Modbus Registers
+This process ensures that all BACnet data is adapted to a format compatible with Modbus holding registers. To maintain order in the assignment of Modbus registers, data is stored sequentially starting from register 0x01, corresponding to the first read point of the indoor unit with the lowest assigned ID (a convention for device identification). Thus, the first five registers in the Modbus server belong to the first indoor unit, the next five to the second unit, and so on.
 
 ## References
-[1] [Daikin Design Guide: Interface for Use in BACnet®](https://research-onero.s3.ap-southeast-1.amazonaws.com/Daikin_dev/img/library/files/CI190128005_files2019-01-28_16-34-59files.pdf) (p 55)
+[1] [Daikin Design Guide: Interface for Use in BACnet®](https://research-onero.s3.ap-southeast-1.amazonaws.com/Daikin_dev/img/library/files/CI190128005_files2019-01-28_16-34-59files.pdf) 
 
 
