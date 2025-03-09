@@ -6,9 +6,10 @@ from pymodbus.server.sync import StartTcpServer
 from pymodbus.device import ModbusDeviceIdentification
 from pymodbus.datastore import ModbusSequentialDataBlock
 from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
+from BAC0.core.io.IOExceptions import NoResponseFromController, Timeout
 
 id_equipo_inicio = 191 # ID del primer equipo Daikin en Lista_de_Puntos_Daikin
-id_equipo_fin = 295 # ID del último equipo Daikin en Lista_de_Puntos_Daikin
+id_equipo_fin = 468 # ID del último equipo Daikin en Lista_de_Puntos_Daikin
 numero_equipos = id_equipo_fin - id_equipo_inicio + 1
 
 local_data = threading.local() # Objeto para almacenar datos locales a cada hilo
@@ -33,62 +34,63 @@ def leer_datos_equipo(local_data, id_equipo):
                         local_data.puntos.append(punto)
                 break
 
-    # print(local_data.puntos)
+    #print(local_data.puntos)
 
     if local_data.puntos:
         # Datos del equipo con id_equipo
         local_data.datos_equipo = {}
-
+        local_data.dicc = {}
+        local_data.objetos = {}
+        
         for punto in local_data.puntos:
             # Para cada punto de lectura, se extraen los datos necesarios para hacer un comando BACnet de lectura
             local_data.ip = punto[2]
             local_data.id_objeto = punto[9]
             local_data.tipo_objeto = punto[10]
             local_data.tipo_senal = punto[11]
+            local_data.dicc[local_data.tipo_senal] = (local_data.tipo_objeto,local_data.id_objeto)
+            local_data.objetos[f'{local_data.tipo_objeto}:{local_data.id_objeto}'] = ['presentValue']
 
-            # Comando BACnet de lectura
-            try:
-                local_data.lectura = instancia_bacnet.read(f'{local_data.ip} {local_data.tipo_objeto} {local_data.id_objeto} presentValue') # instancia_bacnet.read
-            except:
-                local_data.lectura = False
-                print(f'[-] No hay conexión con la sede {punto[7]}')
-
-            # print(f'{local_data.lectura} {(type(local_data.lectura))}')
-
-            if local_data.lectura:
-            # Según el tipo de senal, se almacena la lectura en la variable correspondiente
-                if local_data.tipo_senal == 2: # Estado On Off
-                    local_data.estado_on_off = local_data.lectura
-                elif local_data.tipo_senal == 4: # Estado Velocidad
-                    local_data.estado_velocidad = local_data.lectura
-                elif local_data.tipo_senal == 6: # Temperatura
-                    local_data.temperatura = local_data.lectura
-                elif local_data.tipo_senal == 7: # Error
-                    local_data.error = local_data.lectura
-                elif local_data.tipo_senal == 8: # Setpoint 
-                    local_data.setpoint = local_data.lectura
+        # print(local_data.objetos)
+        # Se arma el diccionario para la lectura múltiple    
+        _rpm = {'address': local_data.ip,
+                    'objects': local_data.objetos
+                    }
+        try:
+            lectura = instancia_bacnet.readMultiple('', request_dict=_rpm)
+        except NoResponseFromController:
+            print(f'[!] Error en la lectura de datos')
+            return 
+        except Timeout:
+            print(f'[!] Error en la lectura de datos')
+            return
         
-        if local_data.lectura:
-            try:
-                local_data.datos_equipo = {
-                    'estado_on_off': local_data.estado_on_off,
-                    'estado_velocidad': local_data.estado_velocidad,
-                    'temperatura': local_data.temperatura,
-                    'error': local_data.error,
-                    'setpoint': local_data.setpoint
-                }
-            except:
-                print(f'[!] Falta la lectura de algún punto del equipo {punto[1]} : {punto[7]}, es muy probable que Lista de Puntos Daikin tenga algún fallo')
-        else:
-            print(f'[-] Datos del equipo {punto[1]} : {punto[7]} no conseguidos por falta de conectividad, se asignarán valores por defecto')
+        #print(lectura)
+        #print(local_data.dicc)
+        if lectura != ['']:
+            local_data.estado_on_off = lectura[local_data.dicc[2]][0][1]
+            local_data.estado_velocidad = lectura[local_data.dicc[4]][0][1]
+            local_data.temperatura = lectura[local_data.dicc[6]][0][1]
+            local_data.error = lectura[local_data.dicc[7]][0][1]
+            local_data.setpoint = lectura[local_data.dicc[8]][0][1]
+            
             local_data.datos_equipo = {
-                'estado_on_off': 0,
-                'estado_velocidad': 0,
-                'temperatura': 0,
-                'error': 0,
-                'setpoint': 0
-            }
-
+                        'estado_on_off': local_data.estado_on_off,
+                        'estado_velocidad': local_data.estado_velocidad,
+                        'temperatura': local_data.temperatura,
+                        'error': local_data.error,
+                        'setpoint': local_data.setpoint
+                    }
+        else:
+            local_data.datos_equipo = {
+                        'estado_on_off': 0,
+                        'estado_velocidad': 0,
+                        'temperatura': 0,
+                        'error': 0,
+                        'setpoint': 0
+                    }
+            
+    #print(f'{local_data.id_equipo} : {local_data.puntos[0][5]} : {local_data.puntos[0][7]} {local_data.datos_equipo}')
     return local_data.datos_equipo
 
 def almacenar_datos_equipo(id_equipo, resultados):
@@ -117,7 +119,7 @@ def obtener_datos_equipos():
 
 def iniciar_servidor():
     IP = "" # "": IP de la máquina local
-    PORT = 502 # 502: puerto habitual para el protocolo Modbus 
+    PORT = 501 # 502: puerto habitual para el protocolo Modbus 
 
     # Iniciar un servidor Modbus TCP
     StartTcpServer(context=context, identity=identity, address=(IP, PORT))
@@ -125,7 +127,7 @@ def iniciar_servidor():
 def configurar_servidor():
     # Unit ID o ID del único esclavo en el servidor: 0x0A
     slaves  = {
-                0x0A: ModbusSlaveContext(hr=ModbusSequentialDataBlock.create(), zero_mode=True)
+                0x0A: ModbusSlaveContext(hr=ModbusSequentialDataBlock(0, [0]*65536), zero_mode=True)
             }
     
     # single = False para más de un esclavo. O para un solo esclavo con unit ID distinta de 0x01
@@ -140,9 +142,10 @@ def mapear_a_modbus(datos_equipos, context):
     address_counter = 1  # Dirección de inicio para los registros holding de lectura
     for id_equipo in sorted(datos_equipos.keys()):
         datos = datos_equipos[id_equipo]
+        mapeo_lectura_velocidad = {0: 0, 1: 1, 2: 3, 3: 2}
 
         rlectura_on_off = 1 if datos['estado_on_off'] == 'active' else 0
-        rlectura_velocidad = datos['estado_velocidad']
+        rlectura_velocidad = mapeo_lectura_velocidad.get(int(datos['estado_velocidad']))
         rlectura_temperatura = int(round(datos['temperatura'], 2)*10)
         rlectura_setpoint = int(round(datos['setpoint'], 2)*10)
         rlectura_error = 0 if datos['error'] == 1 else datos['error']
@@ -173,8 +176,7 @@ def mapear_a_modbus(datos_equipos, context):
 def manejar_escritura_modbus(context):
     address_counter = 0xA000  # Dirección inicial para registros Modbus
     inicializados = set()  # Usar un conjunto para registros inicializados
-    valores_pasados = {}  # Diccionario para almacenar valores anteriores
-
+    
     # Filtrar y almacenar los puntos de control (tipos de señal 1, 3 y 8)
     puntos_control = []
     for sede, equipos in datos_json.items():
@@ -185,13 +187,19 @@ def manejar_escritura_modbus(context):
 
     # print(puntos_control)
 
+    for offset, punto in enumerate(puntos_control):  # Iterar sobre los puntos de control
+            address = address_counter + offset  # Calcular la dirección Modbus
+            # Leer el valor actual desde el contexto Modbus
+            if offset % 3 == 0:
+                context[0xA].setValues(3, address, [2])
+
     while True:
         for offset, punto in enumerate(puntos_control):  # Iterar sobre los puntos de control
             address = address_counter + offset  # Calcular la dirección Modbus
 
-            # Leer el valor actual desde el contexto Modbus
             value = context[0xA].getValues(3, address, count=1)[0]
-
+            #print(address)
+            #print(value)
             # Obtener los detalles del punto de control
             ip = punto[2]  # IP
             object_type = punto[10]  # Object Type (BACnet)
@@ -200,33 +208,35 @@ def manejar_escritura_modbus(context):
 
             # Determinar el valor presente según el tipo de señal
             if tipo_senal == 1:  # binaryOutput (estado on/off)
-                present_value = "active" if value == 1 else "inactive"
+                mapeo_escritura_on_off = {0: "inactive", 1: "active", 2: "None"}
+                present_value = mapeo_escritura_on_off.get(value)
             elif tipo_senal == 3:  # multiStateOutput (velocidad)
-                present_value = value
+                mapeo_escritura_velocidad = {0: 0, 1: 1, 2: 3, 3: 2, 4: 1}
+                present_value = mapeo_escritura_velocidad.get(value)
             elif tipo_senal == 8:  # analogValue (setpoint)
                 present_value = value / 10.0
 
             # Generar el f-string dinámicamente
             f_string = f"{ip} {object_type} {object_id} presentValue {present_value}"
 
-            # Lógica de inicialización y cambios
-            if address not in inicializados:
-                if present_value != ("inactive" if tipo_senal == 1 else 0):
-                    inicializados.add(address)
-                    valores_pasados[address] = present_value
-                    #instancia_bacnet.write(f_string)  # Imprimir en la primera escritura
-                    print(f'[+] Escritura realizada (inicial) : {f_string}')
-            elif valores_pasados[address] != present_value:
-                #instancia_bacnet.write(f_string)  # Imprimir en cambios posteriores
-                print(f'[+] Escritura realizada : {f_string}')
-                valores_pasados[address] = present_value  # Actualizar el valor anterior
+            if present_value != ("None" if tipo_senal == 1 else 0):  # No se manda a comandar si el valor presente es 0 o None
+                inicializados.add(address)
 
+                print(f'[+] Escritura realizada: {f_string}')
+                instancia_bacnet.write(f_string)
+                # Volver a los valores por defecto para los registros de escritura (2 para on/off y 0 para velocidad y setpoint)
+                if offset % 3 == 0:
+                    context[0xA].setValues(3, address, [2])
+                else:
+                    context[0xA].setValues(3, address, [0])
+            
         time.sleep(2)  # Esperar antes de la siguiente iteración
     
 if __name__ == '__main__':
+    
     # Crear instancia BACnet
     instancia_bacnet = BAC0.connect(port=47813)
-
+    
     # Configurar el servidor Modbus
     configurar_servidor()
 
@@ -245,7 +255,8 @@ if __name__ == '__main__':
 
             # Los datos se adaptan a un formato soportado por los registros holding de Modbus
             mapear_a_modbus(datos_equipos, context)    
-            
+            print('Mapeo realizado')
             time.sleep(10)
     except KeyboardInterrupt:
         print(f'[!] Servidor detenido')
+        

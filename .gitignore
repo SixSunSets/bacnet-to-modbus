@@ -5,3 +5,4 @@ beconapp/
 *.vbs
 stop_all.txt
 __pycache__
+broker-smartfit/
